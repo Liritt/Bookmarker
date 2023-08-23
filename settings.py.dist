@@ -1,0 +1,4 @@
+DISCORD = {
+    'bot_token': '',
+    'channel_id': 844273294538834003,
+}
