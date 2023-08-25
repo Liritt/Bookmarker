@@ -7,5 +7,9 @@ services:
       - postgres
   postgres:
     image: postgres:15
-    environment:
-      POSTGRES_PASSWORD: password
+  ports:
+    - "5433:5432"
+  environment:
+    - POSTGRES_DB: bookmarker
+    - POSTGRES_USER: root
+    - POSTGRES_PASSWORD: root
