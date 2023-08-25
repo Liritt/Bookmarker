@@ -1,0 +1,17 @@
+services:
+  bookmarker:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./settings.py:/app/settings.py:ro
+    depends_on:
+      - postgres
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: bookmarker
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
