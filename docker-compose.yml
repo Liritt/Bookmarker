@@ -1,0 +1,11 @@
+services:
+  bookmarker:
+    build: .
+    volumes:
+      - ./settings.py:/app/settings.py:ro
+    depends_on:
+      - postgres
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: password
