@@ -1,4 +1,5 @@
 import json
+import re
 
 from bs4 import BeautifulSoup
 import requests
@@ -52,15 +53,34 @@ class Manganato:
 
         return pic
 
-    def _get_data(self, chapter_number: int):
+    def _get_chapter_number_from_url(self, url: str):
+        pattern = r'/chapter-(\d+(?:\.\d+)?)'
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+        return None
+
+    def get_data(self, user_chapter_number: int):
         url = self._get_url_with_name_search()
         page = requests.get(url, headers=self.headers)
         soup = BeautifulSoup(page.content, 'html.parser')
         pic = self._get_image_url(soup)
+        title = soup.find('h1').text
 
-        last_updated_chapter = soup.find("ul", class_='row-content-chapter').find("li", class_='a-h')
-        print(last_updated_chapter)
-        return pic
+        all_chapters = soup.find("ul", class_='row-content-chapter').find_all("li", class_='a-h')
+        data = {'pic': pic, 'title': title, 'url': url}
+        new_chapters = []
+        for chapter in all_chapters:
+            chapter_title = chapter.find('a')['title']
+            chapter_url = chapter.find('a')['href']
+            chapter_number = self._get_chapter_number_from_url(chapter_url)
+            if float(chapter_number) > user_chapter_number:
+                new_chapters.append(
+                    {
+                        'url': chapter_url,
+                        'title': chapter_title,
+                    }
+                )
 
-
-
+        data['new_chapters'] = new_chapters
+        return data
