@@ -1,9 +1,13 @@
 import json
 import re
+from time import sleep
+from typing import List
 
 from bs4 import BeautifulSoup
 import requests
 from urllib import parse, request
+
+from database import get_url_from_database
 
 
 class Manganato:
@@ -21,10 +25,7 @@ class Manganato:
         self.soup = BeautifulSoup(homepage.content, 'html.parser')
         self.name = name
 
-    def _get_url_with_id(self):
-        return
-
-    def _get_url_with_name_search(self):
+    def _get_url_with_name_search(self) -> str | None:
         params = parse.urlencode({"searchword": self.name}).encode("utf-8")
 
         target_url = request.Request(url="https://manganato.com/getstorysearchjson", data=params, headers=self.headers)
@@ -34,22 +35,52 @@ class Manganato:
         for res in results['searchlist']:
             soup = BeautifulSoup(res['name'], 'html.parser')
             name_text = soup.get_text()
-            name_list.update({name_text: res['url_story']})
+            name_list.update({name_text.lower(): res['url_story']})
 
+        if not name_list:
+            print(f'No comic associated for name "{self.name}"')
+            return None
+
+        url = None
         try:
             url = name_list[self.name.lower()]
         except KeyError:
-            print(f"{self.name} not found among values {name_list.keys()}")
-            exit(1)
+            # In case someone use an alternative name
+            url_list = [res['url_story'] for res in results['searchlist']]
+            for url_elt in url_list:
+                if url:
+                    break
+
+                page = requests.get(url_elt, headers=self.headers)
+                soup = BeautifulSoup(page.content, 'html.parser')
+                alt_names = self._get_alt_names(soup)
+                for alt_name in alt_names:
+                    if self.name.lower() == alt_name.lower():
+                        url = url_elt
+                        break
+                sleep(1)
+
+            if not url:
+                print(name_list, self.name)
+                print(f'Couldn\'t find comic named "{self.name}"')
+                return None
+
+        # noinspection PyUnboundLocalVariable
+        return url
+
+    def _get_url(self):
+        url = get_url_from_database(self.name)
+        if not url:
+            url = self._get_url_with_name_search()
 
         return url
 
-    def _get_image_url(self, soup: BeautifulSoup) -> str:
+    def _get_picture_url(self, soup: BeautifulSoup) -> None | str:
         try:
             pic = soup.find("span", class_='info-image').find("img")['src']
         except (IndexError, KeyError):
             print("Failed to get image")
-            exit(1)
+            return None
 
         return pic
 
@@ -60,15 +91,32 @@ class Manganato:
             return match.group(1)
         return None
 
-    def get_data(self, user_chapter_number: int):
-        url = self._get_url_with_name_search()
+    def _get_alt_names(self, soup: BeautifulSoup):
+        table = soup.find('table', class_='variations-tableInfo')
+        td_list = table.find('tr').find_all('td')
+        if td_list[0].text != 'Alternative :':
+            print('No alternative names found for this comic')
+            return {}
+
+        all_alt_names = td_list[1].find('h2').text.split(';')
+        regex = re.compile(r'^[\u0000-\u00FF]+$')
+        cleaned_alt_names = [alt_name.strip() for alt_name in all_alt_names if regex.match(alt_name)]
+        return cleaned_alt_names if cleaned_alt_names != set() else {}
+
+    def get_data(self, user_chapter_number: float) -> dict | None:
+        url = self._get_url()
+        if not url:
+            return None
+
         page = requests.get(url, headers=self.headers)
         soup = BeautifulSoup(page.content, 'html.parser')
-        pic = self._get_image_url(soup)
+
         title = soup.find('h1').text
+        alt_names = self._get_alt_names(soup)
+        pic_url = self._get_picture_url(soup)
 
         all_chapters = soup.find("ul", class_='row-content-chapter').find_all("li", class_='a-h')
-        data = {'pic': pic, 'title': title, 'url': url}
+        data = {'title': title, 'alt_names': alt_names, 'pic_url': pic_url, 'url': url}
         new_chapters = []
         for chapter in all_chapters:
             chapter_title = chapter.find('a')['title']

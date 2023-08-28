@@ -2,3 +2,5 @@ discord
 discord.py
 beautifulsoup4
 requests
+pypika
+psycopg2

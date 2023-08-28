@@ -1,3 +1,11 @@
+DATABASE = {
+    'host': 'localhost',
+    'name': 'bookmarker',
+    'user': 'root',
+    'password': 'root',
+    'port': '5433',
+}
+
 DISCORD = {
     'bot_token': '',
     'channel_id': 844273294538834003,
