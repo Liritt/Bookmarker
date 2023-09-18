@@ -142,49 +142,82 @@ def get_channel(channel_id: int):
         pass
     return bot_channel
 
+
 # endregion
 
+@bot.command()
+async def setup(ctx):
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("You must be an administrator to use this command")
+        return
 
-@bot.command(name="bookmarker_setup")
-async def bookmarker_setup(ctx):
-    await ctx.send("Hello! I am Bookmarker, the bot able to get the latest chapters of your favorite mangas!")
+    channels_to_write = []
+    channels_to_read = []
+    allowed_roles = []
+    write_select_options = []
+    for channel in ctx.guild.channels:
+        if isinstance(channel, discord.TextChannel) and channel.permissions_for(ctx.guild.me).send_messages:
+            write_select_options.append(discord.SelectOption(label=channel.name, value=str(channel.id)))
 
-    guild = bot.get_guild(ctx.guild.id)
-    text_channels = guild.text_channels
-    options_readable_channels = [discord.SelectOption(label=text_channel.name) for text_channel in text_channels if text_channel.permissions_for(guild.me).read_messages]
+    async def write_select_callback(interaction):
+        nonlocal channels_to_write
+        channels_to_write = [ctx.guild.get_channel(int(option)) for option in interaction.data['values']]
+        write_select.disabled = True
+        await interaction.response.edit_message(view=write_select_view)
+        write_select_view.stop()
 
-    async def readable_channels_callback(interaction):
-        if len(interaction.data['values']) > 1:
-            await interaction.response.send_message(f"Understood! From now on, I'll watch the following channels: {', '.join(interaction.data['values'])}")
-        else:
-            await interaction.response.send_message(f"Understood! From now on, I'll watch channel \"{interaction.data['values'][0]}\"")
+    write_select = Select(options=write_select_options, max_values=len(write_select_options))
+    write_select.callback = write_select_callback
 
-    select = Select(max_values=len(options_readable_channels), options=options_readable_channels, custom_id="readable_channels")
-    select.callback = readable_channels_callback
+    write_select_view = View()
+    write_select_view.add_item(write_select)
+    await ctx.send("Select the channel where you want me to write when I get updates on a manga", view=write_select_view)
+    timeout = await write_select_view.wait()
+    if not timeout:
+        read_select_options = []
+        for channel in ctx.guild.channels:
+            if isinstance(channel, discord.TextChannel) and channel.permissions_for(ctx.guild.me).read_messages:
+                read_select_options.append(discord.SelectOption(label=channel.name, value=str(channel.id)))
 
-    user_channels = View()
-    user_channels.add_item(select)
-    await ctx.send("Select the channel where you want to receive the updates", view=user_channels)
+        async def read_select_callback(interaction):
+            nonlocal channels_to_read
+            channels_to_read = [ctx.guild.get_channel(int(option)) for option in interaction.data['values']]
+            read_select.disabled = True
+            await interaction.response.edit_message(view=read_select_view)
+            read_select_view.stop()
 
-    async def roles_callback(interaction):
-        await interaction.response.send_message(f"Ok, I'll only read messages from users that has the chosen role(s).")
-    roles = RoleSelect(max_values=len(ctx.guild.roles))
-    roles.callback = roles_callback
-    roles_view = View()
-    roles_view.add_item(roles)
-    await ctx.send("Now, select which roles must a user have so that I read his messages", view=roles_view)
+        read_select = Select(options=read_select_options, max_values=len(read_select_options))
+        read_select.callback = read_select_callback
 
-    options_writable_channels = [discord.SelectOption(label=text_channel.name) for text_channel in text_channels if text_channel.permissions_for(guild.me).send_messages]
+        read_select_view = View()
+        read_select_view.add_item(read_select)
+        await ctx.send("Select the channel where I can read messages", view=read_select_view)
+        timeout = await read_select_view.wait()
+        if not timeout:
+            role_select_options = []
+            for role in ctx.guild.roles:
+                role_select_options.append(discord.SelectOption(label=role.name, value=str(role.id)))
 
-    async def writable_channels_callback(interaction):
-        await interaction.response.send_message(f"Understood! From now on, I'll send updates in channel \"{interaction.data['values'][0]}\"")
+            async def role_select_callback(interaction):
+                nonlocal allowed_roles
+                allowed_roles = [ctx.guild.get_role(int(option)) for option in interaction.data['values']]
+                role_select.disabled = True
+                await interaction.response.edit_message(view=role_select_view)
+                role_select_view.stop()
 
-    select = Select(options=options_writable_channels, custom_id="writable_channels")
-    select.callback = writable_channels_callback
+            role_select = Select(options=role_select_options, max_values=len(role_select_options))
+            role_select.callback = role_select_callback
 
-    bot_channel = View()
-    bot_channel.add_item(select)
-    await ctx.send("Now, select the channel where you want me to write when I get updates on a manga", view=bot_channel)
+            role_select_view = View()
+            role_select_view.add_item(role_select)
+            await ctx.send("Select the roles that a user must have so that I read his messages", view=role_select_view)
+
+            timeout = await role_select_view.wait()
+            if not timeout:
+                await ctx.send(f"Configuration enregistrée ! \n"
+                               f"Channels pour écrire : {', '.join([channel.mention for channel in channels_to_write])}\n"
+                               f"Channels pour lire : {', '.join([channel.mention for channel in channels_to_read])}\n"
+                               f"Rôles autorisés : {', '.join([role.mention for role in allowed_roles])}")
 
 
 bot.run(settings.DISCORD['bot_token'])
